@@ -1,0 +1,122 @@
+<section class="container" aria-label="Power supply">
+  <h2>SPE3102 · Power supply</h2>
+  <div id="psu-connection-note" class="connection-note" role="status">
+    Select a serial port below and connect.
+  </div>
+
+  <div class="telemetry">
+    <div class="display-box">
+      <div id="psu-voltage" class="value">—</div>
+      <div class="unit">Measured voltage · V</div>
+    </div>
+    <div class="display-box">
+      <div id="psu-current" class="value">—</div>
+      <div class="unit">Measured current · A</div>
+    </div>
+    <div class="display-box power">
+      <div id="psu-power" class="value">—</div>
+      <div class="unit">Measured power · W</div>
+    </div>
+  </div>
+  <button
+    id="output-toggle"
+    class="output-toggle unknown"
+    type="button"
+    role="switch"
+    aria-checked="false"
+    aria-label="Power supply output; state unknown"
+    disabled
+  >
+    <span class="output-copy"
+      ><span class="output-title">POWER OUTPUT</span
+      ><span id="output-toggle-state">UNKNOWN</span></span
+    >
+    <span class="switch-track" aria-hidden="true"
+      ><span class="switch-thumb"></span
+    ></span>
+  </button>
+  <div class="settings">
+    <div>
+      <label for="set-voltage">Voltage setpoint · V</label
+      ><input
+        id="set-voltage"
+        type="number"
+        min="0"
+        max="30"
+        step="0.01"
+        placeholder="0.00"
+        disabled
+      />
+    </div>
+    <div>
+      <label for="set-current">Current limit · A</label
+      ><input
+        id="set-current"
+        type="number"
+        min="0"
+        max="10"
+        step="0.001"
+        placeholder="0.000"
+        disabled
+      />
+    </div>
+  </div>
+  <p>
+    0–30 V · 0–10 A · 200 W maximum. Applying settings changes the supply
+    immediately, including while its output is on.
+  </p>
+  <div class="actions">
+    <button id="apply" disabled>Apply settings</button
+    ><button id="load-settings" class="secondary" disabled>
+      Load actual settings
+    </button>
+  </div>
+  <div class="readback muted" id="psu-readback">Supply settings: —</div>
+  <h3>Protection limits</h3>
+  <div class="settings">
+    <div>
+      <label for="set-ovp">Overvoltage protection · V</label
+      ><input
+        id="set-ovp"
+        type="number"
+        min="0"
+        max="31"
+        step="0.01"
+        placeholder="0.00"
+        disabled
+      />
+    </div>
+    <div>
+      <label for="set-ocp">Overcurrent protection · A</label
+      ><input
+        id="set-ocp"
+        type="number"
+        min="0"
+        max="10.1"
+        step="0.001"
+        placeholder="0.000"
+        disabled
+      />
+    </div>
+  </div>
+  <p>
+    OVP: 0–31 V · OCP: 0–10.1 A. These thresholds cut off the output when
+    reached. They are separate from the voltage setpoint and current limit.
+  </p>
+  <div class="actions">
+    <button id="apply-protection" disabled>Apply protection</button
+    ><button id="load-protection" class="secondary" disabled>
+      Load actual limits
+    </button>
+  </div>
+  <div class="readback muted" id="psu-protection-readback">
+    Protection limits: —
+  </div>
+  <p>
+    Connecting preserves the existing output state. Disconnect sends output OFF
+    and returns front-panel control. Closing this browser leaves the supply
+    running.
+  </p>
+  {% with device_key="psu" %}{% include "_connection.html" %}{% endwith %}
+  <div id="psu-status" class="status" role="status">Disconnected</div>
+</section>

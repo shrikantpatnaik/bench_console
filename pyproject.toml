@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "owon-bench-console"
+version = "0.5.1"
+description = "Local Flask console for OWON XDM1041 and SPE3102 instruments"
+readme = {file = "README.txt", content-type = "text/plain"}
+requires-python = ">=3.10"
+dependencies = [
+    "Flask>=3.1,<4",
+    "Flask-SocketIO>=5.5,<6",
+    "PyVISA>=1.14,<2",
+    "PyVISA-py>=0.8,<1",
+    "pyserial>=3.5,<4",
+    "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10"]
+
+[project.scripts]
+owon-bench = "bench_console.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bench_console*"]
+
+[tool.setuptools.package-data]
+bench_console = ["templates/*.html", "static/css/*.css", "static/js/*.js", "static/vendor/*"]
+"bench_console.hantek" = ["native/*.c", "native/*.h", "native/*.rules", "firmware/*", "firmware/sigrok-firmware/*.fw"]

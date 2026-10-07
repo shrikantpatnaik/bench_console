@@ -1,0 +1,18 @@
+<div class="connection-settings">
+  <h3>Connection</h3>
+  <label for="{{ device_key }}-port">Serial port or VISA resource</label>
+  <div class="row">
+    <input
+      class="resource"
+      id="{{ device_key }}-port"
+      list="ports"
+      placeholder="Select a port or enter a VISA resource"
+    />
+  </div>
+  <div class="row">
+    <label for="{{ device_key }}-baud">Baud</label>
+    <select id="{{ device_key }}-baud"></select>
+    <button id="{{ device_key }}-connect">Connect</button>
+    <button class="secondary refresh-ports">Refresh ports</button>
+  </div>
+</div>

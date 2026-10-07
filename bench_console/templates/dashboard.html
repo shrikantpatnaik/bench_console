@@ -1,0 +1,12 @@
+{% extends "base.html" %} {% block content %}
+<header>
+  <h1>OWON Bench Console</h1>
+  <p>Multimeter measurements and power-supply controls in one place.</p>
+  <p><a href="{{ url_for('hantek.index') }}">Open Hantek 6022BL scope &amp; logic analyzer →</a></p>
+  <div id="server-status" role="status">Connecting to app…</div>
+</header>
+<datalist id="ports"></datalist>
+<main class="dashboard">
+  {% include "_multimeter.html" %} {% include "_power_supply.html" %}
+</main>
+{% endblock %}

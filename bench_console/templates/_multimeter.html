@@ -1,0 +1,32 @@
+<section class="container" aria-label="Multimeter">
+  <h2>XDM1041 · Multimeter</h2>
+  <div id="dmm-connection-note" class="connection-note" role="status">
+    Select a serial port below and connect.
+  </div>
+
+  <div class="display-box">
+    <div id="readout" class="value">---.---</div>
+    <div id="unit-readout" class="unit">Disconnected</div>
+  </div>
+  <h3>Measurement functions</h3>
+  <div class="grid" id="modes-grid"></div>
+  <div class="panel" id="continuity-panel">
+    <div class="row">
+      <label for="cont-limit">Continuity limit (Ω)</label
+      ><input
+        type="number"
+        id="cont-limit"
+        min="0"
+        value="50"
+        style="width: 100px"
+      />
+      <div
+        id="status-lamp"
+        class="lamp"
+        aria-label="Continuity indicator"
+      ></div>
+    </div>
+  </div>
+  {% with device_key="dmm" %}{% include "_connection.html" %}{% endwith %}
+  <div id="dmm-status" class="status" role="status">Disconnected</div>
+</section>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OWON Bench Console · XDM1041 + SPE3102</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+    <script
+      src="{{ url_for('static', filename='vendor/socket.io-4.8.1.min.js') }}"
+      defer
+    ></script>
+    <script
+      src="{{ url_for('static', filename='js/dashboard.js') }}"
+      defer
+    ></script>
+  </head>
+  <body>
+    {% block content %}{% endblock %}
+    <script type="application/json" id="console-config">
+      {{ {"modes": modes, "bauds": bauds}|tojson }}
+    </script>
+  </body>
+</html>

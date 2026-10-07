@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hantek 6022BL · Bench Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/hantek.css') }}">
+  <script src="{{ url_for('static', filename='vendor/socket.io-4.8.1.min.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/hantek.js') }}" defer></script>
+</head>
+<body>
+<header class="header"><div><p class="eyebrow">BENCH CONSOLE / USB INSTRUMENTS</p><h1>Hantek <span>6022BL</span></h1></div>
+  <nav aria-label="Instruments"><a href="{{ url_for('web.index') }}">Multimeter &amp; supply</a><a href="{{ url_for('hantek.index') }}" aria-current="page">Scope &amp; logic</a></nav>
+</header>
+<main>
+  <div id="connect-note" class="notice">Select the physical H/P mode, scan USB devices below, then connect. Use Demo to explore without hardware.</div>
+  <div id="error" class="error" role="alert" hidden></div>
+  <section class="toolbar card" aria-label="Acquisition controls">
+    <div class="status"><span id="status-dot"></span><strong id="status" role="status">Connecting to app…</strong><small id="source">No device connected</small></div>
+    <div class="buttons"><button id="run" class="primary">▶ Run</button><button id="stop">■ Stop</button><button id="single">Single</button><button id="autoset">Auto Set</button></div>
+    <div class="buttons"><button id="csv">CSV</button><button id="vcd" hidden>VCD</button><button id="png">Save PNG</button></div>
+  </section>
+  <div class="workspace">
+    <section class="display card">
+      <div class="display-title"><strong id="view-title">OSCILLOSCOPE</strong><span id="capture-info">Waiting for capture</span></div>
+      <div class="canvas-wrap"><canvas id="waveform" aria-label="Waveform plot" role="img"></canvas><div id="empty">Connect and press Run to acquire a waveform</div></div>
+      <div id="scale-info" class="scale-info">CH1 · CH2 · 10 horizontal / 8 vertical divisions</div>
+      <div id="quality" class="quality" role="status"></div>
+      <div class="cursor-controls">
+        <label><input id="cursors" type="checkbox"> Cursors</label>
+        <label>T1 <input id="t1" type="range" min="0" max="100" value="25"></label>
+        <label>T2 <input id="t2" type="range" min="0" max="100" value="75"></label>
+        <label class="analog-only">V1 <input id="v1" type="number" value="0" step="0.1"></label>
+        <label class="analog-only">V2 <input id="v2" type="number" value="1" step="0.1"></label>
+        <output id="cursor-readout">Enable cursors to measure Δt and ΔV</output>
+      </div>
+      <details class="guide"><summary>Capture and measurement details</summary>
+        <p>Triggers are software edge triggers within finite USB captures; there are gaps between records. Auto displays a record even without a matching edge. Normal waits for a matching edge; Single stops only after a matching edge. The last triggered record remains visible while waiting.</p>
+        <p>AC and GND coupling are software display operations. AC subtracts each record’s mean. Probe attenuation must match the physical probe. Position and invert affect the display; position does not change measured values.</p>
+        <p>Measurements use the full visible record. Frequency, period, duty and pulse widths require at least two complete, sufficiently sampled periods. A dash means insufficient or invalid data. Top/base and overshoot/preshoot are waveform-dependent estimates. Timing at a small number of samples per cycle is approximate.</p>
+        <p>Standard sigrok support provides two analog channels or eight logic channels, separately. H/P pressed selects scope; released selects logic. Disconnect before switching, and replug/rescan if the device does not change personality. No 16-channel mode or hardware trigger is claimed.</p>
+      </details>
+    </section>
+    <aside class="controls">
+      <section class="card"><h2>Horizontal</h2><label>Time / division<select id="time-div"></select></label><label>Sample rate<select id="sample-rate"></select></label><p class="hint">Auto balances sample rate and record size. Actual rate appears above the plot.</p></section>
+      <section class="card analog-only" id="channel-controls"><h2>Channels</h2>
+        {% for i in range(2) %}
+        <fieldset class="channel ch{{ i+1 }}"><legend><label><input id="ch{{i}}-enabled" type="checkbox" checked> CH{{i+1}}</label></legend>
+          <div class="fields"><label>V/div at ×1<select id="ch{{i}}-vdiv"></select></label><label>Probe<select id="ch{{i}}-probe"><option value="1">×1</option><option value="10">×10</option><option value="100">×100</option><option value="1000">×1000</option></select></label>
+          <label>Position (V)<input id="ch{{i}}-offset" type="number" value="0" step="0.1"></label><label>Coupling<select id="ch{{i}}-coupling"><option>DC</option><option>AC</option><option>GND</option></select></label></div>
+          <label class="inline"><input id="ch{{i}}-invert" type="checkbox"> Invert</label><output id="ch{{i}}-effective" class="hint"></output>
+        </fieldset>{% endfor %}
+      </section>
+      <section class="card analog-only" id="calibration-controls"><h2>Calibration out</h2>
+        <label>Square-wave frequency<select id="calibration-frequency" aria-describedby="calibration-status calibration-help"></select></label>
+        <output id="calibration-status" class="hint" aria-live="polite">Connect in scope mode to apply</output>
+        <p id="calibration-help" class="hint">Connect CAL OUT to CH1 or CH2 to measure the actual frequency. The selector sets the nominal frequency; amplitude is fixed. Changes also work while stopped. In Demo, CH2 simulates this output.</p>
+      </section>
+      <section class="card" id="trigger-controls"><h2>Trigger <small>SOFTWARE</small></h2><div class="fields">
+        <label>Mode<select id="trigger-mode"><option value="auto">Auto</option><option value="normal">Normal</option><option value="single">Single</option></select></label>
+        <label>Source<select id="trigger-source"></select></label>
+        <label>Edge<select id="trigger-edge"><option value="rising">Rising</option><option value="falling">Falling</option><option value="either">Either</option></select></label>
+        <label class="analog-only">Level (V)<input id="trigger-level" type="number" value="0" step="0.1"></label>
+        <label>Pre-trigger %<input id="trigger-pre" type="number" min="5" max="90" value="20" step="5"></label>
+        <label>Holdoff (s)<input id="trigger-holdoff" type="number" min="0" max="5" value="0" step="0.001"></label>
+        <label class="analog-only">Hysteresis (V)<input id="trigger-hysteresis" type="number" min="0" value="0.02" step="0.01"></label>
+      </div></section>
+      <section class="card analog-only"><h2>Acquisition &amp; math</h2><div class="fields">
+        <label>Acquisition<select id="acquisition"><option value="normal">Normal</option><option value="average">Average</option></select></label><label>Averages<select id="average-count"><option>2</option><option selected>4</option><option>8</option><option>16</option></select></label>
+        <label>Math / view<select id="math"><option value="off">Off</option><option value="add">CH1 + CH2</option><option value="subtract">CH1 − CH2</option><option value="multiply">CH1 × CH2</option><option value="divide">CH1 ÷ CH2</option><option value="fft">FFT of trigger source</option><option value="xy">XY: CH1 vs CH2</option></select></label><label>Math units/div<input id="math-vdiv" type="number" min="0.000001" value="1" step="0.1"></label>
+      </div><label class="inline"><input id="persistence" type="checkbox"> Display persistence</label><button id="clear-persistence">Clear traces</button></section>
+      <section class="card logic-only" hidden><h2>Digital inputs</h2><div id="logic-channels" class="logic-selectors">{% for i in range(8) %}<label><input id="d{{i}}-enabled" type="checkbox" checked> D{{i}}</label>{% endfor %}</div><p class="hint">Visibility only; all eight channels are captured. Logic levels use the hardware’s fixed threshold.</p></section>
+    </aside>
+  </div>
+  <section class="card measurements"><div class="section-title"><h2>Live measurements</h2><span id="measurement-age">No record</span></div>
+    <div class="table-scroll analog-only"><table><thead><tr><th>Measurement</th><th class="ch1">CH1</th><th class="ch2">CH2</th></tr></thead><tbody id="analog-measurements">{% for key, label, unit in config.measurements %}<tr><th scope="row">{{label}}</th><td id="m0-{{key}}">—</td><td id="m1-{{key}}">—</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-scroll logic-only" hidden><table><thead><tr><th>Input</th><th>Frequency</th><th>Period</th><th>+ width</th><th>− width</th><th>High occupancy</th><th>Edges</th></tr></thead><tbody id="logic-measurements">{% for i in range(8) %}<tr><th>D{{i}}</th><td id="d{{i}}-frequency">—</td><td id="d{{i}}-period">—</td><td id="d{{i}}-positive_width">—</td><td id="d{{i}}-negative_width">—</td><td id="d{{i}}-occupancy">—</td><td id="d{{i}}-edges">—</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+  <section class="card connection"><h2>USB connection</h2><div class="connection-fields"><label>Instrument mode<select id="device-mode"><option value="scope">Oscilloscope · H/P pressed</option><option value="logic">Logic analyzer · H/P released</option></select></label><label>Detected device<select id="device"><option value="">Scan for USB devices</option></select></label><button id="scan">Scan USB</button><button id="connect" class="primary">Connect</button><button id="disconnect">Disconnect</button><button id="demo">Demo</button></div><p class="hint">The instrument connects by USB, not a serial port. Scope and logic modes cannot run simultaneously. Demo uses generated signals and never accesses USB.</p></section>
+</main>
+<footer>Hantek 6022BL · Local acquisition · All browser assets served by this app</footer>
+<script type="application/json" id="hantek-config">{{config|tojson}}</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+Flask>=3.1,<4
+Flask-SocketIO>=5.5,<6
+PyVISA>=1.14,<2
+PyVISA-py>=0.8,<1
+pyserial>=3.5,<4
+numpy>=1.26,<3

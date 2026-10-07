@@ -1,0 +1,6 @@
+# Hantek 6022BL scope loaders, logic personality, and sigrok FX2 firmware.
+# Membership in plugdev allows use from SSH or a headless service.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="602a", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b5", ATTR{idProduct}=="602a", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0925", ATTR{idProduct}=="3881", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="608e", MODE="0660", GROUP="plugdev"
