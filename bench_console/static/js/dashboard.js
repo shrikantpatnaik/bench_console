@@ -32,6 +32,11 @@ function renderMode() {
     activeMode === "Continuity" ? "panel visible" : "panel";
 }
 function controls() {
+  $("server-status-dot").style.background = !serverConnected
+    ? "var(--muted)" : connected.dmm || connected.psu ? "var(--green)" : "var(--blue)";
+  $("bench-connection-summary").textContent =
+    `Multimeter ${connected.dmm ? "connected" : "disconnected"} · Supply ${connected.psu ? "connected" : "disconnected"}`;
+  $("toolbar-refresh-ports").disabled = !serverConnected;
   for (const key of ["dmm", "psu"]) {
     $(key + "-connection-note").hidden = connected[key] && serverConnected;
     $(key + "-connect").disabled = !serverConnected || busy[key];
@@ -194,7 +199,7 @@ socket.on("dmm_poll_status", (data) => {
 socket.on("telemetry", (data) => {
   if (!connected.dmm) return;
   $("readout").textContent = data.display;
-  $("readout").style.color = data.is_ol ? "#ff8d82" : "#2ecc71";
+  $("readout").style.color = data.is_ol ? "var(--danger)" : "var(--green)";
   $("unit-readout").textContent = data.unit;
   $("status-lamp").className = data.lamp ? "lamp active" : "lamp";
 });

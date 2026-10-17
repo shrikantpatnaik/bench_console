@@ -10,12 +10,28 @@
 #include <stdint.h>
 #include "calibration.h"
 
+/* OpenHantek documents ~2000 unstable ADC samples after the sampling clock
+ * starts. libsigrok 0.5.2 flushes only 512 samples/channel. Discard an extra
+ * 4096 per channel on every hardware scope acquisition, before storing data.
+ * Keep the minimum expected by backend.py in sync. This is not smoothing. */
+#define HANTEK_SETTLING_SAMPLES 4096
+
 struct capture {
     struct sr_session *session;
-    FILE *analog[2], *logic;
+    float *analog[2];
+    uint8_t *logic;
     uint64_t counts[2], logic_count, limit;
+    uint64_t settling_samples, discarded[2];
     int error;
 };
+
+static int scope_rate_supported(uint64_t rate) {
+    switch (rate) {
+        case 100000: case 200000: case 500000: case 1000000:
+        case 4000000: case 8000000: return 1;
+        default: return 0;
+    }
+}
 
 static void quote(const char *s) {
     putchar('"');
@@ -48,17 +64,17 @@ static void datafeed(const struct sr_dev_inst *sdi,
             if (!strcmp(ch->name, "CH1") || !strcmp(ch->name, "A0")) index = 0;
             if (!strcmp(ch->name, "CH2") || !strcmp(ch->name, "A1")) index = 1;
             if (index < 0) continue;
-            uint64_t n = MIN((uint64_t)a->num_samples, cap->limit - cap->counts[index]);
+            /* Channels can arrive separately or interleaved; the settling
+             * prefix can span any number of USB/datafeed packets. */
+            uint64_t skip = MIN((uint64_t)a->num_samples,
+                                cap->settling_samples - cap->discarded[index]);
+            cap->discarded[index] += skip;
+            uint64_t n = MIN((uint64_t)a->num_samples - skip, cap->limit - cap->counts[index]);
             if (channels == 1) {
-                if (fwrite(values, sizeof(float), n, cap->analog[index]) != n) cap->error = 1;
+                memcpy(cap->analog[index] + cap->counts[index], values + skip, n * sizeof(float));
             } else {
-                float *one = g_try_malloc_n(n, sizeof(float));
-                if (!one) cap->error = 1;
-                else {
-                    for (uint64_t i = 0; i < n; i++) one[i] = values[i * channels + column];
-                    if (fwrite(one, sizeof(float), n, cap->analog[index]) != n) cap->error = 1;
-                    g_free(one);
-                }
+                float *dest = cap->analog[index] + cap->counts[index];
+                for (uint64_t i = 0; i < n; i++) dest[i] = values[(i + skip) * channels + column];
             }
             cap->counts[index] += n;
         }
@@ -74,10 +90,10 @@ static void datafeed(const struct sr_dev_inst *sdi,
         const uint8_t *p = l->data;
         /* Expose the first eight digital input bits only. */
         if (l->unitsize == 1) {
-            if (fwrite(p, 1, n, cap->logic) != n) cap->error = 1;
+            memcpy(cap->logic + cap->logic_count, p, n);
         } else {
             for (uint64_t i = 0; i < n; i++)
-                if (fwrite(&p[i * l->unitsize], 1, 1, cap->logic) != 1) cap->error = 1;
+                cap->logic[cap->logic_count + i] = p[i * l->unitsize];
         }
         cap->logic_count += n;
         if (cap->error || cap->logic_count >= cap->limit) sr_session_stop(cap->session);
@@ -133,6 +149,9 @@ int main(int argc, char **argv) {
     }
     if (!scan && !calibration_only && (!folder || !rate || !limit || limit > 2097152)) {
         fprintf(stderr, "Invalid bounded capture parameters\n"); return 2;
+    }
+    if (!scan && !calibration_only && is_scope && !scope_rate_supported(rate)) {
+        fprintf(stderr, "Select a listed two-channel scope rate, up to 8 MSa/s\n"); return 2;
     }
     sr_log_loglevel_set(SR_LOG_WARN);
     struct sr_context *ctx = NULL;
@@ -196,6 +215,7 @@ int main(int argc, char **argv) {
     int ret = 0;
     struct capture cap = {0};
     cap.limit = limit;
+    cap.settling_samples = is_scope && !strcmp(driver_name, "hantek-6xxx") ? HANTEK_SETTLING_SAMPLES : 0;
     if (calibration_frequency != -1 && strcmp(driver_name, "demo")) {
         GVariant *bus_address = NULL;
         if (sr_config_get(driver, selected, NULL, SR_CONF_CONN, &bus_address) != SR_OK) {
@@ -210,7 +230,7 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
     if (set(selected, NULL, SR_CONF_SAMPLERATE, g_variant_new_uint64(rate)) != SR_OK ||
-        set(selected, NULL, SR_CONF_LIMIT_SAMPLES, g_variant_new_uint64(limit)) != SR_OK) {
+        set(selected, NULL, SR_CONF_LIMIT_SAMPLES, g_variant_new_uint64(limit + cap.settling_samples)) != SR_OK) {
         fprintf(stderr, "Unsupported sample rate or record length\n"); ret = 5; goto cleanup;
     }
     GVariant *actual_rate = NULL;
@@ -250,13 +270,13 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Cannot enable channels\n"); ret = 5; goto cleanup;
         }
     }
-    for (int i = 0; i < (is_scope ? 2 : 1); i++) {
-        gchar *path = g_strdup_printf("%s/%s", folder,
-                     is_scope ? (i == 0 ? "CH1.f32" : "CH2.f32") : "logic.bin");
-        FILE *f = fopen(path, "wb");
-        g_free(path);
-        if (!f) { fprintf(stderr, "Cannot write capture file\n"); ret = 6; goto cleanup; }
-        if (is_scope) cap.analog[i] = f; else cap.logic = f;
+    /* Never block libusb's datafeed callback on SD-card/filesystem writes.
+     * Allocate bounded record storage before starting USB acquisition. */
+    if (is_scope) {
+        for (int i = 0; i < 2; i++) cap.analog[i] = g_try_malloc_n(limit, sizeof(float));
+    } else cap.logic = g_try_malloc(limit);
+    if (is_scope ? (!cap.analog[0] || !cap.analog[1]) : !cap.logic) {
+        fprintf(stderr, "Cannot allocate capture memory\n"); ret = 6; goto cleanup;
     }
     if (sr_session_new(ctx, &cap.session) != SR_OK ||
         sr_session_dev_add(cap.session, selected) != SR_OK ||
@@ -264,12 +284,35 @@ int main(int argc, char **argv) {
         sr_session_start(cap.session) != SR_OK || sr_session_run(cap.session) != SR_OK || cap.error) {
         fprintf(stderr, "USB capture failed or ended unexpectedly\n"); ret = 7; goto cleanup;
     }
+    if (is_scope ? (cap.counts[0] != limit || cap.counts[1] != limit ||
+                   cap.discarded[0] != cap.settling_samples || cap.discarded[1] != cap.settling_samples)
+                 : cap.logic_count != limit) {
+        fprintf(stderr, "USB capture ended before the complete record was received\n"); ret = 7; goto cleanup;
+    }
+    /* The session has ended; file I/O can no longer delay the next transfer. */
+    for (int i = 0; i < (is_scope ? 2 : 1); i++) {
+        gchar *path = g_strdup_printf("%s/%s", folder,
+                     is_scope ? (i == 0 ? "CH1.f32" : "CH2.f32") : "logic.bin");
+        FILE *f = fopen(path, "wb");
+        g_free(path);
+        if (!f) { fprintf(stderr, "Cannot write capture file\n"); ret = 6; goto cleanup; }
+        size_t size = is_scope ? sizeof(float) : 1;
+        const void *buffer = is_scope ? (const void *)cap.analog[i] : (const void *)cap.logic;
+        size_t written = fwrite(buffer, size, limit, f);
+        int closed = fclose(f);
+        if (written != limit || closed) {
+            fprintf(stderr, "Cannot save complete capture file\n"); ret = 6; goto cleanup;
+        }
+    }
     printf("{\"rate\":%" G_GUINT64_FORMAT ",\"counts\":[%" G_GUINT64_FORMAT ",%" G_GUINT64_FORMAT
-           "],\"logic_count\":%" G_GUINT64_FORMAT "}\n", rate, cap.counts[0], cap.counts[1], cap.logic_count);
+           "],\"logic_count\":%" G_GUINT64_FORMAT ",\"settling_samples\":%" G_GUINT64_FORMAT
+           ",\"discarded\":[%" G_GUINT64_FORMAT ",%" G_GUINT64_FORMAT "]}\n",
+           rate, cap.counts[0], cap.counts[1], cap.logic_count,
+           cap.settling_samples, cap.discarded[0], cap.discarded[1]);
 cleanup:
     if (cap.session) sr_session_destroy(cap.session);
-    for (int i = 0; i < 2; i++) if (cap.analog[i] && fclose(cap.analog[i])) ret = 6;
-    if (cap.logic && fclose(cap.logic)) ret = 6;
+    for (int i = 0; i < 2; i++) g_free(cap.analog[i]);
+    g_free(cap.logic);
     sr_dev_close(selected);
     g_slist_free(devices);
     sr_exit(ctx);

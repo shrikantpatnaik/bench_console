@@ -2,14 +2,18 @@
 import copy
 import math
 
-SCOPE_RATES = [100_000, 200_000, 500_000, 1_000_000, 4_000_000, 8_000_000,
-               16_000_000, 24_000_000, 30_000_000, 48_000_000]
+# libsigrok's 6022 driver always transports both ADC channels. At 48 MSa/s
+# that is 96 MB/s before USB overhead, exceeding USB 2.0 even when CH2 is
+# hidden. Leave headroom for its transfer scheduling and a headless Pi.
+SCOPE_RATES = [100_000, 200_000, 500_000, 1_000_000, 4_000_000, 8_000_000]
 LOGIC_RATES = [20_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000,
                4_000_000, 8_000_000, 12_000_000, 16_000_000, 24_000_000]
 VDIVS = [.02, .05, .1, .2, .5, 1, 2, 5]
 TIMES = [m * 10 ** e for e in range(-8, 1) for m in (1, 2, 5)] + [1.0]
 TIMES = sorted(set(t for t in TIMES if t <= 1))
 MAX_SAMPLES = 2_097_152
+# Minimum verified discard by the hardware scope helper (capture.c).
+SCOPE_SETTLING_SAMPLES = 4096
 CALIBRATION_FREQUENCIES = [0, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 DEFAULTS = {
     'mode': 'scope', 'time_div': .001, 'sample_rate': 'auto',
@@ -63,7 +67,11 @@ def validate(data, current=None):
         raise ValueError('Use a listed 1–2–5 time/div setting')
     rates = SCOPE_RATES if s['mode'] == 'scope' else LOGIC_RATES
     if s['sample_rate'] != 'auto':
-        s['sample_rate'] = int(number(s['sample_rate'], 'Sample rate', min(rates), max(rates)))
+        requested = number(s['sample_rate'], 'Sample rate', min(rates),
+                           48_000_000 if s['mode'] == 'scope' else max(rates))
+        if s['mode'] == 'scope' and requested > max(SCOPE_RATES):
+            raise ValueError('This two-channel USB backend supports up to 8 MSa/s; select Auto or a lower rate')
+        s['sample_rate'] = int(requested)
         choice(s['sample_rate'], rates, 'sample rate')
     if not isinstance(s['channels'], list) or len(s['channels']) != 2:
         raise ValueError('Exactly two analog channels are required')
@@ -103,6 +111,8 @@ def plan(settings):
     duration = settings['time_div'] * 10
     rates = SCOPE_RATES if settings['mode'] == 'scope' else LOGIC_RATES
     rate = settings['sample_rate']
+    if rate != 'auto' and rate not in rates:
+        raise ValueError('Unsupported sample rate for this acquisition mode')
     if rate == 'auto':
         affordable = [r for r in rates if math.ceil(2 * duration * r) <= MAX_SAMPLES]
         if not affordable:

@@ -9,6 +9,7 @@ import time
 
 import numpy as np
 from .build import build_helper
+from .settings import SCOPE_SETTLING_SAMPLES
 
 class CaptureCancelled(Exception):
     pass
@@ -85,6 +86,12 @@ class SigrokBackend:
             if meta['rate'] != plan['rate']:
                 raise RuntimeError('Instrument sample-rate readback differs from the requested rate')
             if settings['mode'] == 'scope':
+                if device['driver'] == 'hantek-6xxx' and (
+                    meta.get('settling_samples') != SCOPE_SETTLING_SAMPLES or
+                    meta.get('discarded') != [SCOPE_SETTLING_SAMPLES] * 2
+                ):
+                    raise RuntimeError('Scope helper has not verified ADC settling. Rebuild with '
+                                       'python -m bench_console.hantek.build; remove an old HANTEK_HELPER override.')
                 data = [np.fromfile(Path(folder) / f'CH{i+1}.f32', dtype=np.float32)
                         for i in range(2)]
                 if any(len(ch) != plan['count'] for ch in data):

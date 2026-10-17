@@ -1,26 +1,24 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>OWON Bench Console · XDM1041 + SPE3102</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/dashboard.css') }}"
-    />
-    <script
-      src="{{ url_for('static', filename='vendor/socket.io-4.8.1.min.js') }}"
-      defer
-    ></script>
-    <script
-      src="{{ url_for('static', filename='js/dashboard.js') }}"
-      defer
-    ></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{% block title %}OWON · Bench Console{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bench.css') }}">
+    {% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
+    <script src="{{ url_for('static', filename='vendor/socket.io-4.8.1.min.js') }}" defer></script>
+    {% block scripts %}<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>{% endblock %}
   </head>
   <body>
+    <header class="header">
+      <div><p class="eyebrow">BENCH CONSOLE / USB INSTRUMENTS</p><h1>{% block instrument_title %}OWON <span>XDM1041 · SPE3102</span>{% endblock %}</h1></div>
+      <nav aria-label="Instruments">
+        <a href="{{ url_for('web.index') }}"{% if request.blueprint == 'web' %} aria-current="page"{% endif %}>Multimeter &amp; supply</a>
+        <a href="{{ url_for('hantek.index') }}"{% if request.blueprint == 'hantek' %} aria-current="page"{% endif %}>Scope &amp; logic</a>
+      </nav>
+    </header>
     {% block content %}{% endblock %}
-    <script type="application/json" id="console-config">
-      {{ {"modes": modes, "bauds": bauds}|tojson }}
-    </script>
+    <footer>{% block footer %}OWON XDM1041 · SPE3102{% endblock %} · Local acquisition · All browser assets served by this app</footer>
+    {% block page_config %}<script type="application/json" id="console-config">{{ {"modes": modes, "bauds": bauds}|tojson }}</script>{% endblock %}
   </body>
 </html>

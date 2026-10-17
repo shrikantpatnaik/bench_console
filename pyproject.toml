@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "owon-bench-console"
-version = "0.5.1"
+version = "0.5.4"
 description = "Local Flask console for OWON XDM1041 and SPE3102 instruments"
 readme = {file = "README.txt", content-type = "text/plain"}
 requires-python = ">=3.10"

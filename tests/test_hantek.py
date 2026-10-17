@@ -2,13 +2,14 @@
 import copy
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
 from bench_console import create_app
 from bench_console.hantek import analysis
 from bench_console.hantek.backend import CaptureCancelled, DemoBackend, SigrokBackend
-from bench_console.hantek.settings import DEFAULTS, MAX_SAMPLES, validate, plan
+from bench_console.hantek.settings import DEFAULTS, MAX_SAMPLES, SCOPE_RATES, SCOPE_SETTLING_SAMPLES, validate, plan
 
 
 def settings(**updates):
@@ -93,6 +94,94 @@ def test_bad_settings_rejected(data):
 def test_plans_are_bounded(mode,time_div):
     p=plan(settings(mode=mode,time_div=time_div))
     assert 2*p['screen']<=p['count']<=MAX_SAMPLES
+
+
+@pytest.mark.parametrize('time_div', [1e-8, 2e-5, .001, 1])
+def test_scope_auto_leaves_usb_streaming_headroom(time_div):
+    p = plan(settings(time_div=time_div))
+    assert p['rate'] <= 8_000_000
+    if time_div == 2e-5:  # The user's 48 MSa/s / 9,600-sample screenshot.
+        assert p['rate'] == 8_000_000
+        assert p['screen'] == 1600
+        assert p['count'] == 3200
+
+
+@pytest.mark.parametrize('rate', [16_000_000, 24_000_000, 30_000_000, 48_000_000])
+def test_unsafe_scope_rates_rejected_even_when_channel_hidden(rate):
+    channels = copy.deepcopy(DEFAULTS['channels']); channels[1]['enabled'] = False
+    with pytest.raises(ValueError, match='two-channel USB'):
+        validate({'time_div': 2e-5, 'sample_rate': rate, 'channels': channels})
+    with pytest.raises(ValueError, match='Unsupported sample rate'):
+        plan({**DEFAULTS, 'sample_rate': rate})
+
+
+def test_scope_rate_cap_preserves_logic_rates_and_page_options(app):
+    assert plan(settings(mode='logic', time_div=2e-5, sample_rate=24_000_000))['rate'] == 24_000_000
+    import json
+    html = app.test_client().get('/hantek').get_data(as_text=True)
+    config = json.loads(html.split('id="hantek-config">', 1)[1].split('</script>', 1)[0])
+    assert config['scope_rates'] == SCOPE_RATES
+    assert max(config['scope_rates']) == 8_000_000
+    assert max(config['logic_rates']) == 24_000_000
+
+
+def test_square_wave_timing_preserved_across_capture_and_plot(app):
+    s = settings(time_div=2e-5, trigger={'mode': 'normal'})
+    p = plan(s)
+    wave = np.where(np.arange(p['count']) % 160 < 80, 1., -1.)
+    frame, record = app.extensions['hantek_controller']._frame([wave, wave], s, p, {'driver': 'demo'})
+    assert frame['triggered'] and frame['samples'] == p['screen']
+    m = frame['channels'][0]['measurements']
+    assert m['frequency'] == pytest.approx(50_000)
+    assert m['positive_width'] == pytest.approx(10e-6)
+    assert m['negative_width'] == pytest.approx(10e-6)
+    np.testing.assert_array_equal(record['data'][0], wave[:p['screen']])
+
+
+@pytest.mark.parametrize('metadata', [
+    {}, {'settling_samples': 512, 'discarded': [512, 512]},
+    {'settling_samples': 4096, 'discarded': [4096, 4095]},
+    {'settling_samples': 4096, 'discarded': [4096]},
+])
+def test_old_or_incompletely_settled_scope_helpers_rejected(monkeypatch, metadata):
+    backend = SigrokBackend()
+    monkeypatch.setattr(backend, '_run', lambda *args: {'rate': 8_000_000, **metadata})
+    s = settings(time_div=1e-5)
+    with pytest.raises(RuntimeError, match='verified ADC settling'):
+        backend.capture({'driver': 'hantek-6xxx', 'conn': '1.6'}, s, plan(s), threading.Event())
+
+
+def test_verified_scope_samples_reach_trigger_without_further_trimming(monkeypatch):
+    s = settings(time_div=1e-5); p = plan(s)
+    raw = np.arange(p['count'], dtype=np.float32)
+    backend = SigrokBackend()
+    def run(arguments, *args):
+        folder = Path(arguments[arguments.index('--output') + 1])
+        raw.tofile(folder / 'CH1.f32'); (raw + 1).tofile(folder / 'CH2.f32')
+        return {'rate': p['rate'], 'settling_samples': SCOPE_SETTLING_SAMPLES,
+                'discarded': [SCOPE_SETTLING_SAMPLES] * 2}
+    monkeypatch.setattr(backend, '_run', run)
+    received = backend.capture({'driver': 'hantek-6xxx', 'conn': '1.6'}, s, p, threading.Event())
+    np.testing.assert_array_equal(received[0], raw)
+    np.testing.assert_array_equal(received[1], raw + 1)
+
+
+def test_short_view_uses_record_timing_without_changing_voltage_values():
+    rate = 8_000_000
+    full = np.where((np.arange(1600)+180) % 320 < 160, 3.3, 0.)
+    visible = full[300:1100]
+    assert analysis.measurements(visible, rate)['frequency'] is None
+    # A real spike outside the view must not alter its voltage statistics.
+    full[-1] = 4.
+    m, fallback = analysis.scope_measurements(visible, full, rate)
+    assert fallback and m['frequency'] == pytest.approx(25_000)
+    assert m['vpp'] == pytest.approx(3.3)
+    assert m['rms'] == pytest.approx(analysis.measurements(visible, rate)['rms'])
+    # No frequency is invented for a flat record or undersampled data.
+    flat, fallback = analysis.scope_measurements(np.ones(800), np.ones(1600), rate)
+    assert flat['frequency'] is None and not fallback
+    fast = np.tile([0., 3.3], 800)
+    assert analysis.scope_measurements(fast[:800], fast, rate)[0]['frequency'] is None
 
 
 def test_software_trigger_pretrigger_and_edges():

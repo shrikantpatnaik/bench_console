@@ -1,0 +1,239 @@
+/* Shared instrument shell, colors and controls for both pages. */
+:root {
+  color-scheme:dark;
+  --bg:#0b1018;
+  --card:#141d29;
+  --line:#29384b;
+  --text:#e5edf7;
+  --muted:#93a6bd;
+  --yellow:#ffd766;
+  --blue:#65c9ff;
+  --green:#50dca0;
+  --purple:#c696ff;
+  --plot:#080e16;
+  --control:#101925;
+  --danger:#ff9a76;
+}
+* {
+  box-sizing:border-box;
+}
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:14px/1.5 system-ui,-apple-system,sans-serif;
+}
+.header {
+  max-width:1600px;
+  margin:auto;
+  padding:28px 24px 18px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+.eyebrow {
+  color:var(--muted);
+  font-size:10px;
+  letter-spacing:2px;
+  margin:0;
+}
+h1 {
+  font-size:29px;
+  margin:4px 0;
+}
+h1 span {
+  font-weight:400;
+  color:var(--muted);
+}
+nav {
+  display:flex;
+  gap:8px;
+}
+nav a {
+  color:var(--muted);
+  text-decoration:none;
+  padding:9px 14px;
+  border-radius:7px;
+}
+nav a[aria-current] {
+  color:var(--text);
+  background:var(--card);
+}
+main {
+  max-width:1600px;
+  padding:0 24px 24px;
+  margin:auto;
+}
+.card {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:16px;
+  min-width:0;
+}
+.notice,.error {
+  border:1px solid #395476;
+  background:#172a40;
+  padding:12px 16px;
+  border-radius:8px;
+  margin-bottom:14px;
+}
+.error {
+  border-color:#924c55;
+  background:#3b2029;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+button, select, input:not([type=checkbox]):not([type=range]) {
+  font:inherit;
+  color:var(--text);
+  background:#101925;
+  border:1px solid #3b4c63;
+  border-radius:6px;
+  padding:8px;
+}
+button {
+  cursor:pointer;
+  white-space:nowrap;
+}
+button:hover {
+  border-color:var(--blue);
+}
+button:disabled {
+  opacity:.4;
+  cursor:default;
+}
+.primary {
+  background:#155e83;
+  border-color:#2489b5;
+}
+input[type=checkbox] {
+  accent-color:var(--green);
+}
+input[type=range] {
+  accent-color:var(--blue);
+  max-width:100px;
+  vertical-align:middle;
+}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible {
+  outline:2px solid var(--blue);
+  outline-offset:2px;
+}
+.toolbar {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+}
+.buttons {
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.toolbar-status {
+  display:grid;
+  grid-template-columns:12px auto;
+  gap:0 8px;
+  min-width:200px;
+}
+.toolbar-status small {
+  grid-column:2;
+  color:var(--muted);
+}
+.status-dot {
+  width:8px;
+  height:8px;
+  background:var(--muted);
+  border-radius:50%;
+  align-self:center;
+}
+h2 {
+  font-size:14px;
+  margin:0 0 12px;
+  letter-spacing:.3px;
+}
+h2 small {
+  float:right;
+  font-size:9px;
+  font-weight:500;
+  color:var(--muted);
+  padding-top:4px;
+}
+label {
+  display:grid;
+  gap:5px;
+  font-size:12px;
+  color:var(--muted);
+  margin:0 0 9px;
+}
+label input, label select {
+  width:100%;
+  min-width:0;
+}
+label input[type=checkbox] {
+  width:auto;
+}
+.fields {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0 10px;
+}
+.ch1,.ch1 legend label {
+  color:var(--yellow);
+}
+.ch2,.ch2 legend label {
+  color:var(--blue);
+}
+.inline {
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.hint {
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin:5px 0 0;
+}
+.section-title {
+  margin-bottom:10px;
+}
+footer {
+  padding:0 24px 28px;
+  text-align:center;
+  color:var(--muted);
+  font-size:11px;
+}
+[hidden] {
+  display:none!important;
+}
+@media(max-width:600px) {
+.header {
+  padding:20px 14px 12px;
+  align-items:flex-start;
+  flex-direction:column;
+}
+main {
+  padding:0 14px 18px;
+}
+.toolbar {
+  padding:12px;
+}
+nav a {
+  padding:7px 10px;
+}
+}
+
+p, .muted { color: var(--muted); }
+h3 { font-size: 13px; margin: 18px 0 10px; }
+nav a:hover { color: var(--text); }
+.toolbar-status strong { overflow-wrap: anywhere; }
+.toolbar-status { grid-template-columns: 12px minmax(0, 1fr); }
+@media (max-width: 600px) {
+  h1 { font-size: 25px; }
+  h1 span { display: inline-block; }
+  .toolbar-status { min-width: 0; }
+}

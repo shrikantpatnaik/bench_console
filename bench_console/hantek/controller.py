@@ -7,7 +7,7 @@ import time
 import numpy as np
 from . import analysis
 from .backend import SigrokBackend, DemoBackend, CaptureCancelled
-from .settings import DEFAULTS, VDIVS, TIMES, validate, plan
+from .settings import DEFAULTS, VDIVS, TIMES, SCOPE_SETTLING_SAMPLES, validate, plan
 
 class HantekController:
     def __init__(self, app, socketio):
@@ -268,6 +268,7 @@ class HantekController:
                      time_div=s['time_div'], trigger_level=trigger['level'],
                      trigger_source=trigger['source'], undersampled=p['undersampled'],
                      sample_period=1/rate, settings=copy.deepcopy(s))
+        frame['settling_samples'] = SCOPE_SETTLING_SAMPLES if s['mode'] == 'scope' and device['driver'] == 'hantek-6xxx' else 0
         if s['mode'] == 'scope':
             # Alignment averaging only combines triggered frames of this run.
             if s['acquisition'] == 'average' and hit is not None:
@@ -277,8 +278,10 @@ class HantekController:
             frame['channels'] = []
             for i, y in enumerate(window):
                 clipped = bool(np.any(np.abs(raw[i][start:start+screen]) >= 4.98*p['gains'][i]))
+                measurements, timing_from_record = analysis.scope_measurements(y, data[i], rate)
                 frame['channels'].append(dict(points=analysis.envelope(y, rate, pre),
-                    measurements=analysis.measurements(y, rate), clipped=clipped,
+                    measurements=measurements, timing_from_record=timing_from_record,
+                    timing_samples=len(data[i]) if timing_from_record else len(y), clipped=clipped,
                     front_end_vdiv=p['gains'][i], probe=s['channels'][i]['probe']))
             mode = s['math']
             if mode in ('add', 'subtract', 'multiply', 'divide'):
@@ -304,7 +307,8 @@ class HantekController:
                 trace['high_percent'] = float(np.mean(y))*100
                 frame['channels'].append(trace)
         record = dict(mode=s['mode'], demo=frame['demo'], rate=rate, pre=pre,
-                      data=window, settings=copy.deepcopy(s))
+                      data=window, settings=copy.deepcopy(s), settling_samples=frame['settling_samples'],
+                      timing_from_record=[ch.get('timing_from_record', False) for ch in frame['channels']])
         return frame, record
 
     def export_snapshot(self):

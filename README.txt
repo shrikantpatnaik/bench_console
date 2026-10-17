@@ -167,9 +167,15 @@ Optional editable package installation:
 The traditional python main.py command works without package installation.
 
 VALIDATION
-103 simulated-device, numerical-analysis, USB-protocol and Flask tests passed. UI behavior checks cover layout,
+The Python/native suite passes 120 checks, including ADC startup-discard and
+short-view timing regression checks. Native checks require the
+libsigrok and libusb development files and otherwise skip. UI checks cover layout,
 connection-note visibility, toggle states, pending commands, protection edits,
-and disconnects. Physical hardware verification remains necessary.
+and disconnects. Selected-measurement browser checks also cover live values,
+per-channel selection, mode changes, reload persistence, unavailable storage,
+invalid samples and record clearing. A real headless browser also passed live
+Socket.IO demo selection/reload and desktop/mobile layout checks on both pages.
+Physical hardware verification remains necessary.
 
 OVP/OCP protection ranges, OWON SPE technical specification:
 https://files.owon.com.cn/specifications/SPE_Series_Power_Supply.pdf
@@ -225,8 +231,9 @@ CAPABILITIES AND IMPORTANT LIMITS
   V/div, probe x1/x10/x100/x1000, vertical position, invert and visibility.
 - DC, software AC (subtract record mean) and software GND display coupling.
   These software modes do not change the physical input coupling.
-- 1–2–5 time/div, automatic or explicit supported sample rates, up to 48 MS/s
-  analog and 24 MS/s logic when accepted by firmware and USB transport.
+- 1–2–5 time/div, automatic or explicit sample rates: analog 100/200/500 kSa/s
+  and 1/4/8 MSa/s; logic up to 24 MSa/s when accepted by firmware/USB transport.
+  Scope acquisition always receives two analog channels, even if one is hidden.
 - Standard sigrok support exposes eight digital channels. This release does
   not claim support for all 16 hardware logic channels. The two functions are
   mutually exclusive; this is not simultaneous mixed-signal acquisition.
@@ -240,14 +247,18 @@ CAPABILITIES AND IMPORTANT LIMITS
   divisions of ADC range at the BNC. Other display scales are software zoom.
   The plot uses eight vertical divisions. It reports actual front-end range,
   probe-scaled display range, sample rate, sample count and ADC clipping.
-- Highest sample-rate mode and clipping/offset accuracy need testing on the
+- USB streaming reliability and clipping/offset accuracy need testing on the
   particular unit and firmware. No extra ADC resolution, analog bandwidth,
   hardware memory depth or calibration accuracy is implied by display controls.
 - Bounded records (up to 2 Mi samples) keep server memory finite. Auto rate
   targets a practical record size. Explicit rates that cannot cover the
   selected time window are rejected instead of silently changing the scale.
 - Samples are received in binary via a small libsigrok C helper, not CSV.
-  Python computes measurements on the full visible record. Min/max envelopes
+  The helper preallocates bounded record buffers, collects samples in RAM,
+  and writes files only after acquisition ends. Incomplete records are rejected.
+  Python computes voltage measurements on the full visible record. Timing
+  uses the longer captured record when the visible view has too few complete
+  periods; affected channels are identified below the plot. Min/max envelopes
   reduce browser traffic without hiding narrow analog spikes. Dense digital
   rendering is limited to 4,000 transitions/channel and shows a warning;
   full samples remain available in CSV/VCD exports.
@@ -274,6 +285,114 @@ CAPABILITIES AND IMPORTANT LIMITS
   Browser close leaves a running hardware session active; Python shutdown
   cancels the acquisition subprocess. Multiple browsers share one owner and
   settings. Run one server process; do not use multiple WSGI workers.
+
+SCOPE STREAMING STABILITY UPDATE (0.5.3)
+Earlier Auto selection could choose 48 MSa/s for a short timebase. That was
+unsuitable for this backend: libsigrok's 6022 driver always transfers both ADC
+channels, requiring 96 MB/s at that rate before USB overhead. OpenHantek6022
+also excludes 48 MSa/s because USB streaming is unstable, and reserves its
+24/30 MSa/s rates for CH1-only acquisition. This backend does not implement
+that CH1-only transport; hiding CH2 changes display visibility only.
+
+Scope Auto and manual selection now stop at 8 MSa/s to leave USB headroom.
+At 20 us/div, Auto captures 8 MSa/s with 1,600 samples in the visible record.
+This is a conservative rate ceiling, not a guarantee of identical behavior
+to OpenHantek. Logic rates are unchanged. File writes previously happened
+inside the USB callback; they now happen after a complete in-memory capture,
+so a slow Pi SD card cannot block that callback. Software finite-record
+triggering and gaps between records remain as described above.
+
+After extracting the updated project, stop the old server, then run:
+  python -m bench_console.hantek.build
+  python main.py
+The helper cache automatically follows changes in its source. Close
+OpenHantek/sigrok, unplug/reconnect the Hantek, and rescan before connecting.
+For the first hardware comparison, select 4 MSa/s, Normal trigger, the channel
+carrying the signal, and a trigger level between its high/low voltages. Use
+the same probe setting and signal as on the other scope. Then try Auto/8 MSa/s.
+If distortion persists at 4 MSa/s, export CSV at 20 us/div and note the Pi
+model, USB connection, input signal frequency and calibration-output setting.
+This provides raw samples for separating acquisition gaps from display issues.
+
+Primary acquisition references:
+https://github.com/OpenHantek/OpenHantek6022#features
+https://github.com/sigrokproject/libsigrok/blob/libsigrok-0.5.2/src/hardware/hantek-6xxx/api.c
+https://github.com/sigrokproject/libsigrok/blob/libsigrok-0.5.2/src/hardware/hantek-6xxx/protocol.c
+
+ADC STARTUP SETTLING UPDATE (0.5.4)
+The 8 MSa/s ceiling alone did not address a second acquisition problem.
+OpenHantek documents unstable ADC samples after the sampling clock starts
+and discards about 2,000 extra samples. libsigrok 0.5.2 flushes only 1,024
+bytes (512 samples/channel). At 10 us/div and 8 MSa/s, this app previously
+captured only 1,600 samples/channel after that flush, so the trigger and
+visible trace could still be inside the unsettled startup segment.
+
+The native helper now requests an additional 4,096 samples/channel on every
+hardware scope capture and discards this prefix before storing the record.
+This applies independently to CH1 and CH2 across any packet boundaries.
+The remaining record keeps its requested length, rate and timing. Later
+spikes/glitches remain present; this is not waveform smoothing or a filter.
+The helper confirms both discard counts. An old helper override or incomplete
+discard is rejected rather than publishing an unverified record. Demo and
+logic acquisition do not receive this hardware-specific discard.
+
+The recording also showed unavailable/intermittent frequency at 10 us/div.
+A 25 kHz signal gives only 2.5 cycles across that screen, and a triggered
+window may contain fewer than two complete rising-to-rising periods. Timing
+values now fall back to the longer, settled acquisition record when needed;
+the plot identifies the affected channels. Voltage statistics still use the
+visible/averaged window. Timing fallback uses the full unaveraged capture.
+CSV continues to export the visible samples and records this timing source
+and the startup discard in its comment metadata. Invalid/undersampled timing
+still displays a dash; no nominal input frequency is assumed.
+
+Stop the old Python server, extract the entire updated folder and activate
+the existing Python environment. Then rebuild and run:
+  python -m bench_console.hantek.build
+  python main.py
+If HANTEK_HELPER points to a custom/old binary, remove that environment override
+or rebuild that binary from the new source. A normal helper cache rebuilds
+automatically because its name includes the source hash. Hard-refresh the
+browser to load the updated JavaScript. Close OpenHantek and reconnect USB
+before scanning/connecting to switch RAM firmware correctly.
+
+During real scope capture the label now includes "ADC startup discarded".
+This confirms that the new helper removed 4,096 samples from each channel;
+it does not physically certify the waveform or ADC calibration. Compare the
+same 25 kHz input at 10 or 20 us/div, with the trigger level between its rails.
+If it is still distorted with this label present, send a CSV export from the
+same capture and note the Pi model/USB connection; a screen recording cannot
+establish whether the remaining raw samples contain USB gaps or another fault.
+
+The C regression injects a corrupt startup prefix across separate/interleaved
+packets, follows it with a 25 kHz signal, and runs the retained samples through
+the Python reader, trigger, measurements, plot envelope and CSV export. It
+also verifies that a genuine spike after the startup prefix is preserved.
+These are simulated packets; physical Hantek/Pi stability remains unverified.
+
+OpenHantek startup-settling documentation:
+https://github.com/OpenHantek/OpenHantek6022/blob/main/docs/limitations.md
+
+PAGE LAYOUT AND SELECTED MEASUREMENTS
+The multimeter/supply and scope/logic pages share a dark theme, header,
+instrument navigation and toolbar styling. The OWON toolbar shows the app
+connection and instrument connection summary, with a Scan serial ports button.
+Serial selection stays at the bottom of each instrument panel. The supply
+output toggle remains directly below its measured-power display.
+
+In Live measurements on /hantek, tick an individual channel value to display
+it directly below the graph. CH1 and CH2 can show different quantities. Logic
+mode also supports selection of individual D0-D7 values. The initial scope
+choices are Vpp and frequency for both channels; logic starts with D0 frequency
+and high occupancy. Untick all values to leave the graph area uncluttered.
+
+Selections are remembered in this browser across reloads, separately for scope
+and logic. They do not change capture settings or interrupt acquisition. The
+pinned values use exactly the same full-record measurements as the table.
+Record age, stopped/waiting status, DEMO and app-offline states are identified.
+Insufficient data is shown as a dash. Clearing or invalidating a record clears
+its displayed measurements while preserving the user's checkbox choices.
+The feature still works if browser storage is disabled (until page reload).
 
 CALIBRATION OUTPUT
 The /hantek scope page has a Calibration out frequency selector: Off,
@@ -325,6 +444,9 @@ bench_console/hantek/web.py           /hantek and full-resolution exports
 bench_console/templates/hantek.html   Scope and logic page
 bench_console/static/css/hantek.css   Responsive instrument layout
 bench_console/static/js/hantek.js     Canvas plot, cursors and UI controls
+bench_console/static/js/measurement-pins.js Browser-local selected readouts
+bench_console/static/css/bench.css    Shared theme, header and toolbar
+bench_console/templates/base.html    Shared instrument page shell
 bench_console/hantek/native/60-hantek-bench.rules        Headless USB access for plugdev
 
 HANTEK REFERENCES

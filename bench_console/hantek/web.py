@@ -6,12 +6,17 @@ from .settings import DEFAULTS, VDIVS, TIMES, SCOPE_RATES, LOGIC_RATES, CALIBRAT
 
 hantek = Blueprint('hantek', __name__, url_prefix='/hantek')
 
+LOGIC_MEASUREMENTS = [('frequency', 'Frequency', 'Hz'), ('period', 'Period', 's'),
+    ('positive_width', 'Positive width', 's'), ('negative_width', 'Negative width', 's'),
+    ('occupancy', 'High occupancy', '%'), ('edges', 'Edges', '')]
+
 @hantek.get('')
 @hantek.get('/')
 def index():
     return render_template('hantek.html', config=dict(defaults=DEFAULTS, vdivs=VDIVS,
         times=TIMES, scope_rates=SCOPE_RATES, logic_rates=LOGIC_RATES,
-        measurements=MEASUREMENTS, calibration_frequencies=CALIBRATION_FREQUENCIES))
+        measurements=MEASUREMENTS, logic_measurements=LOGIC_MEASUREMENTS,
+        calibration_frequencies=CALIBRATION_FREQUENCIES))
 
 @hantek.get('/export.<kind>')
 def export(kind):
@@ -28,6 +33,10 @@ def export(kind):
         if kind == 'csv':
             yield '# Source: ' + ('DEMO' if record['demo'] else 'Hantek 6022BL') + '\n'
             yield '# Sample rate Hz: ' + str(rate) + '\n'
+            if record['mode'] == 'scope':
+                yield '# ADC startup samples discarded per channel: ' + str(record.get('settling_samples', 0)) + '\n'
+                if any(record.get('timing_from_record', [])):
+                    yield '# Timing measurements used the longer captured record; CSV contains the visible window\n'
             yield '# Settings: ' + json.dumps(record['settings']) + '\n'
             yield 'time_s,' + ','.join(f'CH{i+1}_V' if record['mode']=='scope' else f'D{i}' for i in range(len(data))) + '\n'
             for start in range(0, n, 1024):

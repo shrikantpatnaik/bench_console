@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="99f77be3-7dc7-4c28-abc1-6edcee0df2d1" name="bench-control">
+        <fileTransfer rootFolder="/home/shrikant" accessType="SFTP" host="bench-control.local" port="22" sshConfigId="c07647c5-22bb-4a4b-8e1b-b75013b571a6" sshConfig="shrikant@bench-control.local:22 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

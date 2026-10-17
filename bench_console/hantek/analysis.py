@@ -1,4 +1,4 @@
-"""Measurements use full visible records, before display decimation."""
+"""Voltage uses the visible record; timing can use the longer settled capture."""
 import numpy as np
 
 MEASUREMENTS = [
@@ -12,6 +12,24 @@ MEASUREMENTS = [
     ('positive_duty', 'Positive duty', '%'), ('negative_duty', 'Negative duty', '%'),
     ('overshoot', 'Overshoot', '%'), ('preshoot', 'Preshoot', '%'),
 ]
+TIMING_MEASUREMENTS = ('frequency', 'period', 'rise_time', 'fall_time',
+                       'positive_width', 'negative_width', 'positive_duty', 'negative_duty')
+
+def scope_measurements(visible, captured, rate):
+    """Keep voltage statistics on the view; use the longer record for timing
+    only when the view has too few complete periods (e.g. 25 kHz at 10 us/div).
+    Report that fallback explicitly so its provenance is visible in the UI.
+    """
+    result = measurements(visible, rate)
+    fallback = False
+    if result['frequency'] is None and len(captured) > len(visible):
+        timing = measurements(captured, rate)
+        if timing['frequency'] is not None:
+            for key in TIMING_MEASUREMENTS:
+                if result[key] is None:
+                    result[key] = timing[key]
+                    fallback = True
+    return result, fallback
 
 def crossings(y, level, rising=True):
     mask = ((y[:-1] < level) & (y[1:] >= level)) if rising else ((y[:-1] > level) & (y[1:] <= level))

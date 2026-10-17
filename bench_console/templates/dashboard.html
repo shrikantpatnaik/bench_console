@@ -1,12 +1,15 @@
-{% extends "base.html" %} {% block content %}
-<header>
-  <h1>OWON Bench Console</h1>
-  <p>Multimeter measurements and power-supply controls in one place.</p>
-  <p><a href="{{ url_for('hantek.index') }}">Open Hantek 6022BL scope &amp; logic analyzer →</a></p>
-  <div id="server-status" role="status">Connecting to app…</div>
-</header>
+{% extends "base.html" %}
+{% block title %}OWON XDM1041 + SPE3102 · Bench Console{% endblock %}
+{% block content %}
 <datalist id="ports"></datalist>
-<main class="dashboard">
-  {% include "_multimeter.html" %} {% include "_power_supply.html" %}
+<main>
+  <section class="toolbar card" aria-label="Bench controls">
+    <div class="toolbar-status"><span id="server-status-dot" class="status-dot"></span><strong id="server-status" role="status">Connecting to app…</strong><small id="bench-connection-summary">Multimeter disconnected · Supply disconnected</small></div>
+    <div class="buttons"><button id="toolbar-refresh-ports" class="primary refresh-ports">Scan serial ports</button></div>
+  </section>
+  <div class="dashboard">
+    {% include "_multimeter.html" %}
+    {% include "_power_supply.html" %}
+  </div>
 </main>
 {% endblock %}

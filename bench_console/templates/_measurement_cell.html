@@ -1,0 +1,7 @@
+{% macro measurement_cell(mode, channel, key, label) -%}
+  <label class="measurement-choice">
+    <input type="checkbox" class="measurement-pin" data-mode="{{mode}}" data-channel="{{channel}}" data-metric="{{key}}"
+      aria-label="Show {{'CH' ~ (channel + 1) if mode == 'scope' else 'D' ~ channel}} {{label}} below the graph">
+    <span class="measurement-value" id="{{'m' if mode == 'scope' else 'd'}}{{channel}}-{{key}}">—</span>
+  </label>
+{%- endmacro %}

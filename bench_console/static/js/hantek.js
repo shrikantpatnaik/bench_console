@@ -20,10 +20,12 @@
     const node = $(id); node.replaceChildren();
     values.forEach(value => { const option=document.createElement('option'); option.value=value; option.textContent=label(value); node.append(option); });
   }
+  const measurementPins = window.BenchMeasurementPins.create({config, format, colors});
   options('time-div', config.times, value => format(value,'s')+'/div');
   options('calibration-frequency', config.calibration_frequencies, value => value===0 ? 'Off' : format(value,'Hz'));
   for (let i=0;i<2;i++) options(`ch${i}-vdiv`, config.vdivs, value => format(value,'V')+'/div');
   function showMode(mode) {
+    measurementPins.setMode(mode);
     const logic = mode === 'logic';
     document.querySelectorAll('.analog-only').forEach(node => {node.hidden=logic;});
     document.querySelectorAll('.logic-only').forEach(node => {node.hidden=!logic;});
@@ -93,11 +95,12 @@
     $('csv').disabled=!online||!frame||pending; $('vcd').disabled=!online||!frame||pending;
     $('png').disabled=!frame;
   }
-  socket.on('connect', () => {online=true; pending=false; updateButtons();});
+  socket.on('connect', () => {online=true; pending=false; measurementPins.setStatus(state?.status || 'disconnected', online); updateButtons();});
   socket.on('disconnect', () => {
     online=false; pending=false;
     $('status').textContent='App connection lost'; $('quality').textContent='Displayed waveform is retained data; reconnecting…';
     $('status-dot').style.background='#ff9a76'; updateButtons();
+    measurementPins.setStatus(state?.status || 'disconnected', online);
   });
   socket.on('state', next => {
     state=next; pending=next.status==='connecting';
@@ -116,6 +119,7 @@
     if(next.error){$('error').textContent=next.error;$('error').hidden=false;}
     if(next.frame_id===null) {frame=null;history=[];clearMeasurements();$('empty').hidden=false;$('capture-info').textContent='Waiting for capture';}
     if(next.status==='waiting' && frame) $('quality').textContent='Waiting for trigger · showing the last triggered record';
+    measurementPins.setStatus(next.status, online);
     updateButtons();draw();
   });
   socket.on('devices', devices => {
@@ -129,7 +133,8 @@
     if(state) loadSettings(state.settings); updateButtons();
   });
   function clearMeasurements() {
-    document.querySelectorAll('.measurements td').forEach(node=>{node.textContent='—';});
+    document.querySelectorAll('.measurement-value').forEach(node=>{node.textContent='—';});
+    measurementPins.update(null);
     $('measurement-age').textContent='No record'; $('quality').textContent='';
   }
   function measurements() {
@@ -140,6 +145,7 @@
       $(`d${i}-occupancy`).textContent=format(ch.high_percent,'%');$(`d${i}-edges`).textContent=ch.edges.toLocaleString();
     });
     $('measurement-age').textContent=(frame.demo?'DEMO · ':'')+'record #'+frame.id;
+    measurementPins.update(frame);
   }
   socket.on('frame', next => {
     if ((state && next.revision < state.revision) || (frame && next.id <= frame.id)) return;
@@ -147,11 +153,13 @@
     if($('persistence').checked && next.mode==='scope' && !['fft','xy'].includes(next.settings.math)) {history.push(next);if(history.length>12)history.shift();}
     else history=[];
     $('empty').hidden=true;
-    $('capture-info').textContent=`${format(next.rate,'Sa/s')} · ${next.samples.toLocaleString()} samples · ${next.triggered?'TRIG':'AUTO / no edge'}${next.averages>1?' · avg '+next.averages:''}`;
+    $('capture-info').textContent=`${format(next.rate,'Sa/s')} · ${next.samples.toLocaleString()} samples · ${next.triggered?'TRIG':'AUTO / no edge'}${next.averages>1?' · avg '+next.averages:''}${next.settling_samples?' · ADC startup discarded':''}`;
     const warnings=[];
     if(next.demo) warnings.push('DEMO: generated signals');
     if(next.undersampled) warnings.push('Only '+next.samples+' samples across the screen; reduce timebase zoom for usable resolution');
     if(next.mode==='scope') {
+      const timingChannels=next.channels.map((ch,i)=>ch.timing_from_record?`CH${i+1}`:null).filter(Boolean);
+      if(timingChannels.length) warnings.push(timingChannels.join('/')+' timing uses the longer captured record; voltage measurements use the visible window');
       next.channels.forEach((ch,i)=>{if(ch.clipped)warnings.push(`CH${i+1} ADC clipping: increase range or probe attenuation`);});
       if(next.settings.channels.some(ch=>ch.coupling!=='DC'))warnings.push('AC/GND coupling is implemented in software');
       if(next.math?.invalid_samples) warnings.push('Division undefined at '+next.math.invalid_samples+' samples; invalid points drawn at zero');
@@ -246,6 +254,6 @@
   canvas.addEventListener('pointermove',event=>{if(!drag)return;const rect=canvas.getBoundingClientRect(),b=bounds();$(drag).value=Math.min(100,Math.max(0,(event.clientX-rect.left-b.left)/b.width*100));draw();});
   canvas.addEventListener('pointerup',()=>{drag=null;});canvas.addEventListener('pointercancel',()=>{drag=null;});
   new ResizeObserver(draw).observe(canvas);
-  setInterval(()=>{if(frame&&online){const age=Math.max(0,(Date.now()/1000-frame.captured_at));$('measurement-age').textContent=(frame.demo?'DEMO · ':'')+`record #${frame.id} · ${age.toFixed(1)} s ago${state?.running?'':' · stopped'}`;}},500);
+  setInterval(()=>{measurementPins.refreshStatus();if(frame&&online){const age=Math.max(0,(Date.now()/1000-frame.captured_at));$('measurement-age').textContent=(frame.demo?'DEMO · ':'')+`record #${frame.id} · ${age.toFixed(1)} s ago${state?.running?'':' · stopped'}`;}},500);
   loadSettings(config.defaults);updateButtons();draw();
 })();
